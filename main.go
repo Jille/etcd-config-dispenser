@@ -202,7 +202,7 @@ func parsePermissions() (permissions, error) {
 		group: -1,
 	}
 	if *mode != "" {
-		m, err := strconv.ParseUint(*mode, 8, 8)
+		m, err := strconv.ParseUint(*mode, 8, 32)
 		if err != nil {
 			return ret, fmt.Errorf("given --mode (%q) is not valid", *mode)
 		}
