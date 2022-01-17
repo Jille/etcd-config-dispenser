@@ -3,6 +3,7 @@ module github.com/Jille/etcd-config-dispenser
 go 1.17
 
 require (
+	github.com/Jille/dfr v1.0.0
 	github.com/Jille/etcd-client-from-env v1.0.0
 	github.com/spf13/pflag v1.0.5
 	go.etcd.io/etcd/client/v3 v3.5.1
@@ -10,6 +11,7 @@ require (
 )
 
 require (
+	github.com/Jille/errchain v1.0.0 // indirect
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect

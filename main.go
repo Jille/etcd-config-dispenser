@@ -4,16 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/Jille/dfr"
 	clientconfig "github.com/Jille/etcd-client-from-env"
 	"github.com/spf13/pflag"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -24,12 +26,16 @@ var (
 	prefix       = pflag.StringP("prefix", "p", "", "Prefix of etcd files to fetch")
 	target       = pflag.StringP("target", "t", "", "Target directory to install etcd content to")
 	reloadSignal = pflag.StringP("signal", "s", "", "Signal to send when config files are changed")
+	mode         = pflag.StringP("mode", "m", "600", "Mode (as in chmod) of the created files")
+	owner        = pflag.StringP("owner", "o", "", "owner of the created files")
+	group        = pflag.StringP("group", "g", "", "group of the created files")
 )
 
 var (
 	c         *clientv3.Client
 	sigCh     = make(chan os.Signal, 1000)
 	reloadSig os.Signal
+	perms     permissions
 )
 
 func main() {
@@ -37,6 +43,11 @@ func main() {
 	ctx := context.Background()
 	pflag.Parse()
 	*prefix = strings.TrimSuffix(*prefix, "/") + "/"
+	var err error
+	perms, err = parsePermissions()
+	if err != nil {
+		log.Fatal(err)
+	}
 	switch *reloadSignal {
 	case "SIGINT":
 		reloadSig = syscall.SIGINT
@@ -130,7 +141,7 @@ func syncLoop(ctx context.Context, initialSync chan struct{}) error {
 		return fmt.Errorf("Failed to retrieve initial keys: %v", err)
 	}
 	for _, kv := range resp.Kvs {
-		if err := ioutil.WriteFile(pathForKey(kv.Key), kv.Value, 0600); err != nil {
+		if err := perms.WriteFile(pathForKey(kv.Key), kv.Value); err != nil {
 			return fmt.Errorf("Failed to write to %q: %v", pathForKey(kv.Key), err)
 		}
 	}
@@ -155,7 +166,7 @@ func syncLoop(ctx context.Context, initialSync chan struct{}) error {
 		for _, e := range wr.Events {
 			switch e.Type {
 			case clientv3.EventTypePut:
-				if err := ioutil.WriteFile(pathForKey(e.Kv.Key), e.Kv.Value, 0600); err != nil {
+				if err := perms.WriteFile(pathForKey(e.Kv.Key), e.Kv.Value); err != nil {
 					return fmt.Errorf("Failed to write to %q: %v", pathForKey(e.Kv.Key), err)
 				}
 			case clientv3.EventTypeDelete:
@@ -176,4 +187,80 @@ func syncLoop(ctx context.Context, initialSync chan struct{}) error {
 
 func pathForKey(key []byte) string {
 	return filepath.Join(*target, strings.TrimPrefix(string(key), *prefix))
+}
+
+type permissions struct {
+	mode  os.FileMode
+	owner int
+	group int
+}
+
+func parsePermissions() (permissions, error) {
+	ret := permissions{
+		mode:  0600,
+		owner: -1,
+		group: -1,
+	}
+	if *mode != "" {
+		m, err := strconv.ParseUint(*mode, 8, 8)
+		if err != nil {
+			return ret, errors.New("given --mode (%q) is not valid")
+		}
+		ret.mode = os.FileMode(m)
+	}
+	if *owner != "" {
+		u, err := user.Lookup(*owner)
+		if err != nil {
+			return ret, fmt.Errorf("failed to look up user %q: %v", *owner, err)
+		}
+		uid, err := strconv.ParseInt(u.Uid, 10, 64)
+		if err != nil {
+			return ret, errors.New("uid for owner is not numeric")
+		}
+		ret.owner = int(uid)
+	}
+	if *group != "" {
+		g, err := user.Lookup(*group)
+		if err != nil {
+			return ret, fmt.Errorf("failed to look up group %q: %v", *group, err)
+		}
+		gid, err := strconv.ParseInt(g.Gid, 10, 64)
+		if err != nil {
+			return ret, errors.New("gid for group is not numeric")
+		}
+		ret.group = int(gid)
+	}
+	return ret, nil
+}
+
+func (p permissions) WriteFile(fn string, data []byte) (retErr error) {
+	var d dfr.D
+	defer d.Run(&retErr)
+	fh, err := os.CreateTemp(filepath.Dir(fn), "")
+	if err != nil {
+		return err
+	}
+	unlinker := d.AddErr(func() error {
+		return os.Remove(fh.Name())
+	})
+	closer := d.AddErr(fh.Close)
+	if p.owner != -1 || p.group != -1 {
+		if err := os.Chown(fh.Name(), p.owner, p.group); err != nil {
+			return err
+		}
+	}
+	if err := os.Chmod(fh.Name(), p.mode); err != nil {
+		return err
+	}
+	if _, err := fh.Write(data); err != nil {
+		return err
+	}
+	if err := closer(true); err != nil {
+		return err
+	}
+	if err := os.Rename(fh.Name(), fn); err != nil {
+		return err
+	}
+	unlinker(false)
+	return nil
 }
