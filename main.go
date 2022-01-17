@@ -17,6 +17,7 @@ import (
 	clientconfig "github.com/Jille/etcd-client-from-env"
 	"github.com/spf13/pflag"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"google.golang.org/grpc"
 )
 
 var (
@@ -62,6 +63,7 @@ func main() {
 		log.Fatalf("Failed to parse environment settings: %v", err)
 	}
 	log.Printf("Connecting to etcd...")
+	cc.DialOptions = append(cc.DialOptions, grpc.WithBlock())
 	c, err = clientv3.New(cc)
 	if err != nil {
 		log.Fatalf("Failed to connect to etcd: %v", err)
