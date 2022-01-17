@@ -204,7 +204,7 @@ func parsePermissions() (permissions, error) {
 	if *mode != "" {
 		m, err := strconv.ParseUint(*mode, 8, 8)
 		if err != nil {
-			return ret, errors.New("given --mode (%q) is not valid")
+			return ret, fmt.Errorf("given --mode (%q) is not valid", *mode)
 		}
 		ret.mode = os.FileMode(m)
 	}
