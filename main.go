@@ -66,7 +66,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect to etcd: %v", err)
 	}
-	defer c.Close()
 	log.Printf("Connected.")
 	go c.Sync(ctx)
 
