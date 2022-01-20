@@ -23,7 +23,8 @@ COPY --from=etcd-config-dispenser /bin/etcd-config-dispenser /usr/local/sbin/etc
 
 ...
 
-CMD ["/usr/local/sbin/etcd-config-dispenser", "--prefix=/certificates", "--target=/config", "--signal=SIGHUP", "--", "/usr/sbin/nginx", "-g", "daemon off;"]
+CMD ["/usr/local/sbin/etcd-config-dispenser", "--prefix=/certificates", "--target=/config", \
+     "--signal=SIGHUP", "--", "/usr/sbin/nginx", "-g", "daemon off;"]
 ```
 
 ## Parameters
